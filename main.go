@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/p2p/enode"
@@ -18,7 +19,6 @@ import (
 
 func main() {
 	var portFlag = flag.Int("port", 6000, "port number")
-	//var privKeyFlag = flag.String("privk", "", "private key")
 	var bootnodeFlag = flag.String("bootnodes", "", "comma separated bootnodes")
 	flag.Parse()
 
@@ -74,25 +74,65 @@ func main() {
 
 	localnode.SetFallbackUDP(udpAddr.Port)
 
+	fmt.Println("YOUR NODE:")
 	fmt.Println(localnode.Node())
-
 	listener, err := discover.ListenV5(conn, localnode, config)
 	if err != nil {
 		panic(err)
 	}
 
+	peerDelay := 50 * time.Millisecond
+	bucketSize := 15
+
+	fmt.Println("\nDiscovered peers:")
+	fmt.Println("===============================================================================")
+
 	go func() {
 		iterator := listener.RandomNodes()
 		seen := make(map[enode.ID]struct{})
+		peerCnt := 0
 		for iterator.Next() {
+
+			start := time.Now()
+			hasNext := iterator.Next()
+			if !hasNext {
+				break
+			}
+			elapsed := time.Since(start)
+
+			if elapsed < peerDelay {
+				t := time.NewTimer(peerDelay - elapsed)
+				select {
+				case <-ctx.Done():
+					return
+				case <-t.C:
+					t.Stop()
+				}
+			}
+
+			// Delay every 15 peers being returned
+			peerCnt++
+			if peerCnt == bucketSize {
+				peerCnt = 0
+				t := time.NewTimer(5 * time.Second)
+				fmt.Println("Waiting 5 secs...")
+				select {
+				case <-ctx.Done():
+					return
+				case <-t.C:
+					t.Stop()
+					fmt.Println("Attempting to discover more peers")
+				}
+			}
+
 			node := iterator.Node()
+			_ = node
 			_, ok := seen[node.ID()]
 			if ok {
 				continue
 			}
 			seen[node.ID()] = struct{}{}
-
-			fmt.Printf(fmt.Sprintf("found %d nodes \n", len(seen)))
+			fmt.Println(len(seen), node.String())
 
 			select {
 			case <-ctx.Done():
