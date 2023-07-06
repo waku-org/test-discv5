@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/p2p/enode"
@@ -81,12 +82,50 @@ func main() {
 		panic(err)
 	}
 
+	peerDelay := 100 * time.Millisecond
+	bucketSize := 15
+
 	go func() {
 		iterator := listener.RandomNodes()
-		seen := make(map[enode.ID]struct{})
+		// seen := make(map[enode.ID]struct{})
+		peerCnt := 0
 		for iterator.Next() {
+
+			start := time.Now()
+			hasNext := iterator.Next()
+			if !hasNext {
+				break
+			}
+			elapsed := time.Since(start)
+
+			if elapsed < peerDelay {
+				t := time.NewTimer(peerDelay - elapsed)
+				select {
+				case <-ctx.Done():
+					return
+				case <-t.C:
+					t.Stop()
+				}
+			}
+
+			// Delay every 15 peers being returned
+			peerCnt++
+			if peerCnt == bucketSize {
+				peerCnt = 0
+				t := time.NewTimer(5 * time.Second)
+				fmt.Println("Waiting 5 secs...")
+				select {
+				case <-ctx.Done():
+					return
+				case <-t.C:
+					t.Stop()
+				}
+			}
+
 			node := iterator.Node()
-			_, ok := seen[node.ID()]
+			_ = node
+			fmt.Println("Found node...")
+			/*_, ok := seen[node.ID()]
 			if ok {
 				continue
 			}
@@ -98,7 +137,7 @@ func main() {
 			case <-ctx.Done():
 				return
 			default:
-			}
+			}*/
 		}
 		iterator.Close()
 
