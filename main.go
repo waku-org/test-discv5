@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/ethereum/go-ethereum/p2p/dnsdisc"
 	"github.com/ethereum/go-ethereum/p2p/enode"
 	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethereum/go-ethereum/p2p/nat"
@@ -22,6 +23,8 @@ import (
 func main() {
 	var portFlag = flag.Int("port", 6000, "port number")
 	var bootnodeFlag = flag.String("bootnodes", "", "comma separated bootnodes")
+	var dnsdiscFlag = flag.String("dns-disc-url", "", "DNS discovery URL")
+
 	flag.Parse()
 
 	db, err := enode.OpenDB("")
@@ -39,6 +42,7 @@ func main() {
 
 	bootnodesStr := strings.Split(*bootnodeFlag, ",")
 	var bootnodes []*enode.Node
+
 	for _, addr := range bootnodesStr {
 		if addr == "" {
 			continue
@@ -48,6 +52,23 @@ func main() {
 			panic(err)
 		}
 		bootnodes = append(bootnodes, bootnode)
+	}
+
+	if *dnsdiscFlag != "" {
+		c := dnsdisc.NewClient(dnsdisc.Config{})
+		tree, err := c.SyncTree(*dnsdiscFlag)
+		if err != nil {
+			panic(err)
+		}
+
+		bootnodes = append(bootnodes, tree.Nodes()...)
+	}
+
+	if len(bootnodes) > 0 {
+		fmt.Println("Bootnodes:")
+		for i, b := range bootnodes {
+			fmt.Println(i+1, "-", b.String())
+		}
 	}
 
 	config := discover.Config{
@@ -76,7 +97,7 @@ func main() {
 
 	localnode.SetFallbackUDP(udpAddr.Port)
 
-	fmt.Println("YOUR NODE:")
+	fmt.Println("\nYour node:")
 	fmt.Println(localnode.Node())
 	listener, err := discover.ListenV5(conn, localnode, config)
 	if err != nil {
@@ -144,9 +165,9 @@ func main() {
 				seen[node.ID()] = node
 			}
 
-			fmt.Println(len(seen), recType, node.String())
+			fmt.Println(len(seen), "-", recType, "-", node.String())
 			node.TCP()
-			fmt.Println("ip", node.IP(), ":", node.TCP())
+			fmt.Println(fmt.Sprintf("ip %s:%d", node.IP(), node.TCP()))
 
 			rs, err := ReadValue(node.Record(), "rs")
 			if err == nil && len(rs) > 0 {
