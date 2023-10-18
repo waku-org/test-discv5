@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"net"
@@ -13,6 +14,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/p2p/enode"
+	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethereum/go-ethereum/p2p/nat"
 	"github.com/waku-org/go-discover/discover"
 )
@@ -89,7 +91,7 @@ func main() {
 
 	go func() {
 		iterator := listener.RandomNodes()
-		seen := make(map[enode.ID]struct{})
+		seen := make(map[enode.ID]*enode.Node)
 		peerCnt := 0
 		for iterator.Next() {
 
@@ -127,12 +129,36 @@ func main() {
 
 			node := iterator.Node()
 			_ = node
-			_, ok := seen[node.ID()]
+			n, ok := seen[node.ID()]
+
+			recType := "NEW"
+
 			if ok {
-				continue
+				if node.Seq() > n.Seq() {
+					seen[node.ID()] = node
+					recType = "UPDATE"
+				} else {
+					continue
+				}
+			} else {
+				seen[node.ID()] = node
 			}
-			seen[node.ID()] = struct{}{}
-			fmt.Println(len(seen), node.String())
+
+			fmt.Println(len(seen), recType, node.String())
+			node.TCP()
+			fmt.Println("ip", node.IP(), ":", node.TCP())
+
+			rs, err := ReadValue(node.Record(), "rs")
+			if err == nil && len(rs) > 0 {
+				fmt.Println("rs", "0x"+hex.EncodeToString(rs))
+			}
+
+			rsv, err := ReadValue(node.Record(), "rsv")
+			if err == nil && len(rsv) > 0 {
+				fmt.Println("rsv", "0x"+hex.EncodeToString(rsv))
+			}
+
+			fmt.Println()
 
 			select {
 			case <-ctx.Done():
@@ -157,6 +183,17 @@ func main() {
 
 	cancel()
 
+}
+
+func ReadValue(record *enr.Record, name string) ([]byte, error) {
+	var field []byte
+	if err := record.Load(enr.WithEntry(name, &field)); err != nil {
+		if enr.IsNotFound(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return field, nil
 }
 
 // GetLocalIP returns the non loopback local IP of the host
