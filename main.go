@@ -18,6 +18,7 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/enr"
 	"github.com/ethereum/go-ethereum/p2p/nat"
 	"github.com/waku-org/go-discover/discover"
+	wenr "github.com/waku-org/go-waku/waku/v2/protocol/enr"
 )
 
 func main() {
@@ -72,9 +73,11 @@ func main() {
 	}
 
 	config := discover.Config{
-		PrivateKey:   priv,
-		Bootnodes:    bootnodes,
-		V5ProtocolID: &protocolID,
+		PrivateKey: priv,
+		Bootnodes:  bootnodes,
+		V5Config: discover.V5Config{
+			ProtocolID: &protocolID,
+		},
 	}
 
 	udpAddr := &net.UDPAddr{
@@ -166,7 +169,15 @@ func main() {
 			}
 
 			fmt.Println(len(seen), "-", recType, "-", node.String())
-			node.TCP()
+
+			peerID, multiaddresses, err := wenr.Multiaddress(node)
+			if err == nil {
+				fmt.Println("peerID", peerID)
+				if len(multiaddresses) > 0 {
+					fmt.Println("multiaddr", multiaddresses)
+				}
+			}
+
 			fmt.Println(fmt.Sprintf("ip %s:%d", node.IP(), node.TCP()))
 
 			rs, err := ReadValue(node.Record(), "rs")
