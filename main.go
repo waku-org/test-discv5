@@ -65,13 +65,6 @@ func main() {
 		bootnodes = append(bootnodes, tree.Nodes()...)
 	}
 
-	if len(bootnodes) > 0 {
-		fmt.Println("Bootnodes:")
-		for i, b := range bootnodes {
-			fmt.Println(i+1, "-", b.String())
-		}
-	}
-
 	config := discover.Config{
 		PrivateKey: priv,
 		Bootnodes:  bootnodes,
@@ -100,11 +93,18 @@ func main() {
 
 	localnode.SetFallbackUDP(udpAddr.Port)
 
-	fmt.Println("\nYour node:")
+	fmt.Println("Your node:")
 	fmt.Println(localnode.Node())
 	listener, err := discover.ListenV5(conn, localnode, config)
 	if err != nil {
 		panic(err)
+	}
+
+	if len(bootnodes) > 0 {
+		fmt.Println("\nBootnodes:")
+		for i, b := range bootnodes {
+			fmt.Println(i+1, "-", b.String())
+		}
 	}
 
 	peerDelay := 50 * time.Millisecond
