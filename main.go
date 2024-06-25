@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/hex"
 	"flag"
 	"fmt"
 	"net"
@@ -19,6 +18,10 @@ import (
 	"github.com/ethereum/go-ethereum/p2p/nat"
 	"github.com/waku-org/go-discover/discover"
 	wenr "github.com/waku-org/go-waku/waku/v2/protocol/enr"
+	"github.com/waku-org/go-waku/waku/v2/protocol/filter"
+	"github.com/waku-org/go-waku/waku/v2/protocol/lightpush"
+	"github.com/waku-org/go-waku/waku/v2/protocol/relay"
+	"github.com/waku-org/go-waku/waku/v2/protocol/store"
 )
 
 func main() {
@@ -183,29 +186,18 @@ func main() {
 			}
 
 			fmt.Println(fmt.Sprintf("ip %s:%d", node.IP(), node.TCP()))
-
-			rs, err := ReadValue(node.Record(), "rs")
-			if err == nil {
-				if len(rs) > 0 {
-					fmt.Println("rs:", "0x"+hex.EncodeToString(rs))
-				} else {
-					fmt.Println("rs:", "field contains no value")
-				}
-			} else {
-				fmt.Println("rs:", err.Error())
+			shards, err := wenr.RelaySharding(node.Record())
+			if err != nil {
+				fmt.Println("rs/rsv:", "field contains no value")
 			}
-
-			rsv, err := ReadValue(node.Record(), "rsv")
-			if err == nil {
-				if len(rsv) > 0 {
-					fmt.Println("rsv:", "0x"+hex.EncodeToString(rsv))
-				} else {
-					fmt.Println("rsv:", "field contains no value")
-				}
+			if shards != nil {
+				fmt.Println("cluster-id: ", shards.ClusterID)
+				fmt.Println("shards: ", shards.ShardIDs)
 			} else {
-				fmt.Println("rsv:", err.Error())
+				fmt.Println("cluster-id:", "not available")
+				fmt.Println("shards:", "not available")
 			}
-
+			DecodeWaku2ENRField(node.Record())
 			fmt.Println()
 
 			select {
@@ -259,4 +251,34 @@ func GetLocalIP() net.IP {
 		}
 	}
 	return net.IPv4zero
+}
+
+func DecodeWaku2ENRField(record *enr.Record) {
+	//Decoding Waku2 field
+	var enrField wenr.WakuEnrBitfield
+	var protosSupported []string
+	if err := record.Load(enr.WithEntry("waku2", &enrField)); err != nil {
+		if enr.IsNotFound(err) {
+			fmt.Println("waku2:", "field contains no value")
+		} else {
+			panic(err)
+		}
+	}
+
+	if enrField&relay.WakuRelayENRField != 0 {
+		protosSupported = append(protosSupported, string(relay.WakuRelayID_v200))
+	}
+	if enrField&filter.FilterSubscribeENRField != 0 {
+		protosSupported = append(protosSupported, string(filter.FilterSubscribeID_v20beta1))
+	}
+	if enrField&lightpush.LightPushENRField != 0 {
+		protosSupported = append(protosSupported, string(lightpush.LightPushID_v20beta1))
+	}
+	if enrField&store.StoreENRField != 0 {
+		protosSupported = append(protosSupported, string(store.StoreID_v20beta4))
+	}
+	fmt.Println("Wakuv2 Protocols Supported:")
+	for _, proto := range protosSupported {
+		fmt.Println(proto)
+	}
 }
